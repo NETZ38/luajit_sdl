@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "type": "lua-local",
+            // https://marketplace.visualstudio.com/items?itemName=tomblind.local-lua-debugger-vscode
+            "request": "launch",
+            "name": "run: sdl_draw.lua",
+            "program": {
+                "lua": "luajit",
+                "file": "sdl_draw.lua"
+            }
+        }
+    ]
+}
