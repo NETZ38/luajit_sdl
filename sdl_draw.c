@@ -3,16 +3,21 @@
  * Converted from Windows GDI to SDL2
  *
  * Desktop Controls:
- *   Mouse Wheel: Smooth zoom in/out (1.15x factor)
- *   Left Click:  Zoom in 1.5x centered on cursor
- *   Right Click: Zoom out 1.5x centered on cursor
- *   ESC:         Exit application
+ *   Mouse Wheel:       Smooth zoom in/out (1.15x factor)
+ *   Left Click:        Zoom in 1.5x centered on cursor
+ *   Right Click:       Zoom out 1.5x centered on cursor
+ *   Left/Right Drag:   Pan the view (drag to move around)
+ *   Middle Drag:       Pan the view (alternative)
+ *   Left Hold (still): Continuous zoom IN toward cursor position
+ *   Right Hold (still):Continuous zoom OUT from cursor position
+ *   ESC:               Exit application
  *
  * Touch Controls (Android/Mobile):
  *   Single Finger Drag: Pan the view
  *   Two Finger Pinch:   Zoom in/out
  *   Single Tap:         Zoom in 1.5x centered on tap
- *   Double Tap:         Zoom out 1.5x centered on tap
+ *   Double Tap:         Reset view to default
+ *   Finger Hold:        Continuous zoom in toward finger (no movement)
  */
 
 #include <SDL2/SDL.h>
@@ -69,6 +74,23 @@ static float lastTapX = 0, lastTapY = 0;
 static int debugTapX = -1, debugTapY = -1;
 static Uint32 debugTapTime = 0;
 static Uint32 lastZoomTime = 0; // Debounce for zoom actions
+
+// Hold-to-zoom state (mouse and touch)
+static int mouseButtonHeld = 0;            // Which button is held (0=none, 1=left, 3=right)
+static int mouseHoldX = 0, mouseHoldY = 0; // Position where button was pressed
+static Uint32 mouseHoldStartTime = 0;      // When button was pressed
+static int holdZoomActive = 0;             // Whether we're in hold-zoom mode (vs click-zoom)
+#define HOLD_ZOOM_DELAY 150                // ms before hold-zoom activates (allows quick clicks)
+#define HOLD_ZOOM_RATE 1.16                // Zoom factor per frame when holding (~16% per frame)
+
+// Touch hold-to-zoom state
+static int touchHoldZoomActive = 0;          // Whether touch hold-zoom is active
+static Uint32 touchHoldStartTime = 0;        // When single finger touch started
+static float touchHoldX = 0, touchHoldY = 0; // Position of touch hold
+
+// Mouse panning state
+static int mousePanning = 0;                     // Whether mouse is panning
+static int mousePanLastX = 0, mousePanLastY = 0; // Last mouse position for pan delta
 
 // Calculate escape iterations for a point in the complex plane
 static int mandelbrot(double cr, double ci)
@@ -174,33 +196,165 @@ static void renderMandelbrot(void)
     SDL_UpdateTexture(texture, NULL, pixels, renderWidth * sizeof(uint32_t));
 }
 
-// Handle mouse button events for zooming
-static void handleMouseButton(SDL_MouseButtonEvent *event)
+// Handle mouse button events for zooming (down and up)
+static void handleMouseButtonDown(SDL_MouseButtonEvent *event)
 {
-    double scale = 4.0 / (renderWidth * zoom);
-    double worldX = center_x + (event->x - renderWidth / 2.0) * scale;
-    double worldY = center_y + (event->y - renderHeight / 2.0) * scale;
+    if (event->button == SDL_BUTTON_MIDDLE)
+    {
+        // Middle button starts panning immediately
+        mousePanning = 1;
+        mousePanLastX = event->x;
+        mousePanLastY = event->y;
+        mouseButtonHeld = SDL_BUTTON_MIDDLE;
+    }
+    else if (event->button == SDL_BUTTON_LEFT || event->button == SDL_BUTTON_RIGHT)
+    {
+        mouseButtonHeld = event->button;
+        mouseHoldX = event->x;
+        mouseHoldY = event->y;
+        mouseHoldStartTime = SDL_GetTicks();
+        holdZoomActive = 0; // Will activate after HOLD_ZOOM_DELAY
+        mousePanning = 0;
+    }
+}
 
-    if (event->button == SDL_BUTTON_LEFT)
+static void handleMouseButtonUp(SDL_MouseButtonEvent *event)
+{
+    if (event->button == mouseButtonHeld)
+    {
+        // Middle button was just panning
+        if (event->button == SDL_BUTTON_MIDDLE)
+        {
+            mousePanning = 0;
+            mouseButtonHeld = 0;
+            return;
+        }
+
+        // If we were panning with left/right, don't zoom
+        if (mousePanning)
+        {
+            mousePanning = 0;
+            mouseButtonHeld = 0;
+            holdZoomActive = 0;
+            return;
+        }
+
+        // If we never entered hold-zoom mode, do a single click zoom
+        if (!holdZoomActive)
+        {
+            double scale = 4.0 / (renderWidth * zoom);
+            double worldX = center_x + (event->x - renderWidth / 2.0) * scale;
+            double worldY = center_y + (event->y - renderHeight / 2.0) * scale;
+
+            if (event->button == SDL_BUTTON_LEFT)
+            {
+                // Zoom in
+                zoom *= 1.5;
+            }
+            else if (event->button == SDL_BUTTON_RIGHT)
+            {
+                // Zoom out
+                zoom /= 1.5;
+            }
+
+            // Recalculate center to keep clicked point under cursor
+            double newScale = 4.0 / (renderWidth * zoom);
+            center_x = worldX - (event->x - renderWidth / 2.0) * newScale;
+            center_y = worldY - (event->y - renderHeight / 2.0) * newScale;
+            needsRedraw = 1;
+        }
+        mouseButtonHeld = 0;
+        holdZoomActive = 0;
+    }
+}
+
+// Handle mouse motion for panning
+static void handleMouseMotion(SDL_MouseMotionEvent *event)
+{
+    if (mouseButtonHeld == 0)
+        return;
+
+    // For middle button, we're always panning (already set in mousedown)
+    // For left/right, check if we should start panning (mouse moved while button held)
+    if (!mousePanning && (mouseButtonHeld == SDL_BUTTON_LEFT || mouseButtonHeld == SDL_BUTTON_RIGHT))
+    {
+        int dx = abs(event->x - mouseHoldX);
+        int dy = abs(event->y - mouseHoldY);
+        if (dx > 10 || dy > 10)
+        {
+            // Movement detected - start panning, cancel hold-zoom
+            mousePanning = 1;
+            holdZoomActive = 0; // Cancel any zoom that may have started
+            mousePanLastX = event->x;
+            mousePanLastY = event->y;
+        }
+    }
+
+    if (mousePanning)
+    {
+        // Pan the view
+        int dx = event->x - mousePanLastX;
+        int dy = event->y - mousePanLastY;
+
+        double scale = 4.0 / (renderWidth * zoom);
+        center_x -= dx * scale;
+        center_y -= dy * scale;
+
+        mousePanLastX = event->x;
+        mousePanLastY = event->y;
+        needsRedraw = 1;
+    }
+}
+
+// Continuous zoom while mouse button is held
+static void updateMouseHoldZoom(void)
+{
+    if (mouseButtonHeld == 0 || mousePanning)
+        return;
+
+    Uint32 now = SDL_GetTicks();
+    if (!holdZoomActive)
+    {
+        // Check if we've held long enough to activate hold-zoom
+        if (now - mouseHoldStartTime >= HOLD_ZOOM_DELAY)
+        {
+            holdZoomActive = 1;
+        }
+        else
+        {
+            return; // Not yet in hold-zoom mode
+        }
+    }
+
+    // Get current mouse position for zooming toward it
+    int mouseX, mouseY;
+    SDL_GetMouseState(&mouseX, &mouseY);
+
+    double scale = 4.0 / (renderWidth * zoom);
+    double worldX = center_x + (mouseX - renderWidth / 2.0) * scale;
+    double worldY = center_y + (mouseY - renderHeight / 2.0) * scale;
+
+    if (mouseButtonHeld == SDL_BUTTON_LEFT)
     {
         // Zoom in
-        zoom *= 1.5;
-        // Recalculate center to keep clicked point under cursor
-        double newScale = 4.0 / (renderWidth * zoom);
-        center_x = worldX - (event->x - renderWidth / 2.0) * newScale;
-        center_y = worldY - (event->y - renderHeight / 2.0) * newScale;
-        needsRedraw = 1;
+        double newZoom = zoom * HOLD_ZOOM_RATE;
+        if (newZoom <= MAX_ZOOM)
+            zoom = newZoom;
     }
-    else if (event->button == SDL_BUTTON_RIGHT)
+    else if (mouseButtonHeld == SDL_BUTTON_RIGHT)
     {
         // Zoom out
-        zoom /= 1.5;
-        // Recalculate center to keep clicked point under cursor
-        double newScale = 4.0 / (renderWidth * zoom);
-        center_x = worldX - (event->x - renderWidth / 2.0) * newScale;
-        center_y = worldY - (event->y - renderHeight / 2.0) * newScale;
-        needsRedraw = 1;
+        double newZoom = zoom / HOLD_ZOOM_RATE;
+        if (newZoom >= MIN_ZOOM)
+            zoom = newZoom;
     }
+
+    // Recalculate center to keep point under cursor fixed
+    double newScale = 4.0 / (renderWidth * zoom);
+    center_x = worldX - (mouseX - renderWidth / 2.0) * newScale;
+    center_y = worldY - (mouseY - renderHeight / 2.0) * newScale;
+
+    needsRedraw = 1;
 }
 
 // Handle mouse wheel events for smooth zooming
@@ -261,11 +415,16 @@ static void handleFingerDown(SDL_TouchFingerEvent *event)
         finger1_x = x;
         finger1_y = y;
         numFingers = 1;
-        isPanning = 1;
+        isPanning = 0; // Don't start panning immediately - wait for movement
         lastPanX = x;
         lastPanY = y;
         initialTapX = x; // Store initial position for tap detection
         initialTapY = y;
+        // Set up for potential hold-to-zoom
+        touchHoldStartTime = SDL_GetTicks();
+        touchHoldX = x;
+        touchHoldY = y;
+        touchHoldZoomActive = 0;
     }
     else if (numFingers == 1)
     {
@@ -305,15 +464,16 @@ static void handleFingerUp(SDL_TouchFingerEvent *event)
     SDL_Log("FINGER UP: id=%lld x=%.3f y=%.3f window=%dx%d",
             (long long)id, ex, ey, windowWidth, windowHeight);
 
-    if (numFingers == 1 && isPanning && id == finger1_id)
+    if (numFingers == 1 && id == finger1_id)
     {
         // Check for tap (minimal movement from initial touch position)
+        // Only process tap if we weren't panning
         float dx = fabsf(ex - initialTapX) * windowWidth;
         float dy = fabsf(ey - initialTapY) * windowHeight;
 
-        SDL_Log("TAP CHECK: dx=%.1f dy=%.1f (threshold=20)", dx, dy);
+        SDL_Log("TAP CHECK: dx=%.1f dy=%.1f (threshold=20) isPanning=%d", dx, dy, isPanning);
 
-        if (dx < 20 && dy < 20)
+        if (!isPanning && dx < 20 && dy < 20)
         {
             Uint32 currentTime = SDL_GetTicks();
 
@@ -384,6 +544,7 @@ static void handleFingerUp(SDL_TouchFingerEvent *event)
         finger1_id = 0;
         numFingers = 0;
         isPanning = 0;
+        touchHoldZoomActive = 0;
     }
     else if (numFingers == 2)
     {
@@ -413,6 +574,48 @@ static void handleFingerUp(SDL_TouchFingerEvent *event)
     }
 }
 
+// Continuous zoom while finger is held (without panning)
+static void updateTouchHoldZoom(void)
+{
+    // Only zoom if we have exactly 1 finger and we're not panning
+    if (numFingers != 1 || isPanning)
+        return;
+
+    Uint32 now = SDL_GetTicks();
+    if (!touchHoldZoomActive)
+    {
+        // Check if we've held long enough to activate hold-zoom
+        if (now - touchHoldStartTime >= HOLD_ZOOM_DELAY)
+        {
+            touchHoldZoomActive = 1;
+        }
+        else
+        {
+            return; // Not yet in hold-zoom mode
+        }
+    }
+
+    // Zoom toward the touch position
+    float touchPixelX = touchHoldX * renderWidth;
+    float touchPixelY = touchHoldY * renderHeight;
+
+    double scale = 4.0 / (renderWidth * zoom);
+    double worldX = center_x + (touchPixelX - renderWidth / 2.0) * scale;
+    double worldY = center_y + (touchPixelY - renderHeight / 2.0) * scale;
+
+    // Always zoom in for touch hold
+    double newZoom = zoom * HOLD_ZOOM_RATE;
+    if (newZoom <= MAX_ZOOM)
+        zoom = newZoom;
+
+    // Recalculate center to keep point under finger fixed
+    double newScale = 4.0 / (renderWidth * zoom);
+    center_x = worldX - (touchPixelX - renderWidth / 2.0) * newScale;
+    center_y = worldY - (touchPixelY - renderHeight / 2.0) * newScale;
+
+    needsRedraw = 1;
+}
+
 // Handle touch finger motion
 static void handleFingerMotion(SDL_TouchFingerEvent *event)
 {
@@ -427,21 +630,50 @@ static void handleFingerMotion(SDL_TouchFingerEvent *event)
         y = y / windowHeight;
     }
 
-    if (numFingers == 1 && isPanning && id == finger1_id)
+    if (numFingers == 1 && id == finger1_id)
     {
-        // Single finger pan - use normalized delta, map to rendering space
-        float dx = x - lastPanX;
-        float dy = y - lastPanY;
+        // Check if we've moved enough to start panning
+        float moveDist = sqrtf((x - initialTapX) * (x - initialTapX) +
+                               (y - initialTapY) * (y - initialTapY)) *
+                         windowWidth;
 
-        double scale = 4.0 / (renderWidth * zoom);
-        center_x -= dx * renderWidth * scale;
-        center_y -= dy * renderHeight * scale;
+        SDL_Log("FINGER MOTION: moveDist=%.1f isPanning=%d holdZoom=%d", moveDist, isPanning, touchHoldZoomActive);
 
-        lastPanX = x;
-        lastPanY = y;
-        finger1_x = x;
-        finger1_y = y;
-        needsRedraw = 1;
+        // Any movement at all (> 5 pixels) should disable hold-zoom potential
+        if (moveDist > 5)
+        {
+            touchHoldZoomActive = 0;
+            touchHoldStartTime = 0xFFFFFFFF; // Prevent hold-zoom from ever activating
+        }
+
+        if (moveDist > 15) // Movement threshold to start panning
+        {
+            if (!isPanning)
+            {
+                // Start panning
+                isPanning = 1;
+                lastPanX = x;
+                lastPanY = y;
+                SDL_Log("PANNING STARTED");
+            }
+        }
+
+        if (isPanning)
+        {
+            // Single finger pan - use normalized delta, map to rendering space
+            float dx = x - lastPanX;
+            float dy = y - lastPanY;
+
+            double scale = 4.0 / (renderWidth * zoom);
+            center_x -= dx * renderWidth * scale;
+            center_y -= dy * renderHeight * scale;
+
+            lastPanX = x;
+            lastPanY = y;
+            finger1_x = x;
+            finger1_y = y;
+            needsRedraw = 1;
+        }
     }
     else if (numFingers == 2)
     {
@@ -583,7 +815,15 @@ int main(int argc, char *argv[])
                 break;
 
             case SDL_MOUSEBUTTONDOWN:
-                handleMouseButton(&event.button);
+                handleMouseButtonDown(&event.button);
+                break;
+
+            case SDL_MOUSEBUTTONUP:
+                handleMouseButtonUp(&event.button);
+                break;
+
+            case SDL_MOUSEMOTION:
+                handleMouseMotion(&event.motion);
                 break;
 
             case SDL_MOUSEWHEEL:
@@ -638,6 +878,10 @@ int main(int argc, char *argv[])
                 break;
             }
         }
+
+        // Update continuous zoom if button/finger is held
+        updateMouseHoldZoom();
+        updateTouchHoldZoom();
 
         // Render if needed
         if (needsRedraw)
