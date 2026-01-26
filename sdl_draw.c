@@ -20,14 +20,18 @@
 #include <stdlib.h>
 #include <math.h>
 
-#define WIDTH 800
-#define HEIGHT 600
+#define INITIAL_WIDTH 800
+#define INITIAL_HEIGHT 600
 
 // Mandelbrot parameters
 static double zoom = 1.0;
 static double center_x = -0.5;
 static double center_y = 0.0;
 static int max_iter = 256;
+
+// Dynamic render size (matches window)
+static int renderWidth = INITIAL_WIDTH;
+static int renderHeight = INITIAL_HEIGHT;
 
 // Zoom limits to prevent issues
 #define MIN_ZOOM 0.1
@@ -39,8 +43,8 @@ static SDL_Renderer *renderer = NULL;
 static SDL_Texture *texture = NULL;
 static uint32_t *pixels = NULL;
 static int needsRedraw = 1;
-static int windowWidth = WIDTH;
-static int windowHeight = HEIGHT;
+static int windowWidth = INITIAL_WIDTH;
+static int windowHeight = INITIAL_HEIGHT;
 
 // Touch state for multi-touch gestures
 static int numFingers = 0;
@@ -114,9 +118,9 @@ static uint32_t getColor(int iter)
 // Render the Mandelbrot set to the pixel buffer
 static void renderMandelbrot(void)
 {
-    double scale = 4.0 / (WIDTH * zoom);
+    double scale = 4.0 / (renderWidth * zoom);
 
-    SDL_Log("RENDER: center=(%.6f, %.6f) zoom=%.2f scale=%.10f", center_x, center_y, zoom, scale);
+    SDL_Log("RENDER: center=(%.6f, %.6f) zoom=%.2f scale=%.10f size=%dx%d", center_x, center_y, zoom, scale, renderWidth, renderHeight);
 
     // Sanity check - ensure we're not rendering garbage
     if (zoom <= 0 || !isfinite(center_x) || !isfinite(center_y) || !isfinite(zoom))
@@ -125,17 +129,17 @@ static void renderMandelbrot(void)
         center_x = -0.5;
         center_y = 0.0;
         zoom = 1.0;
-        scale = 4.0 / (WIDTH * zoom);
+        scale = 4.0 / (renderWidth * zoom);
     }
 
-    for (int py = 0; py < HEIGHT; py++)
+    for (int py = 0; py < renderHeight; py++)
     {
-        double ci = center_y + (py - HEIGHT / 2.0) * scale;
-        for (int px = 0; px < WIDTH; px++)
+        double ci = center_y + (py - renderHeight / 2.0) * scale;
+        for (int px = 0; px < renderWidth; px++)
         {
-            double cr = center_x + (px - WIDTH / 2.0) * scale;
+            double cr = center_x + (px - renderWidth / 2.0) * scale;
             int iter = mandelbrot(cr, ci);
-            pixels[py * WIDTH + px] = getColor(iter);
+            pixels[py * renderWidth + px] = getColor(iter);
         }
     }
 
@@ -156,35 +160,35 @@ static void renderMandelbrot(void)
             {
                 int px = debugTapX + i;
                 int py = debugTapY;
-                if (px >= 0 && px < WIDTH && py >= 0 && py < HEIGHT)
-                    pixels[py * WIDTH + px] = color;
+                if (px >= 0 && px < renderWidth && py >= 0 && py < renderHeight)
+                    pixels[py * renderWidth + px] = color;
                 px = debugTapX;
                 py = debugTapY + i;
-                if (px >= 0 && px < WIDTH && py >= 0 && py < HEIGHT)
-                    pixels[py * WIDTH + px] = color;
+                if (px >= 0 && px < renderWidth && py >= 0 && py < renderHeight)
+                    pixels[py * renderWidth + px] = color;
             }
         }
     }
 
     // Update texture with new pixel data
-    SDL_UpdateTexture(texture, NULL, pixels, WIDTH * sizeof(uint32_t));
+    SDL_UpdateTexture(texture, NULL, pixels, renderWidth * sizeof(uint32_t));
 }
 
 // Handle mouse button events for zooming
 static void handleMouseButton(SDL_MouseButtonEvent *event)
 {
-    double scale = 4.0 / (WIDTH * zoom);
-    double worldX = center_x + (event->x - WIDTH / 2.0) * scale;
-    double worldY = center_y + (event->y - HEIGHT / 2.0) * scale;
+    double scale = 4.0 / (renderWidth * zoom);
+    double worldX = center_x + (event->x - renderWidth / 2.0) * scale;
+    double worldY = center_y + (event->y - renderHeight / 2.0) * scale;
 
     if (event->button == SDL_BUTTON_LEFT)
     {
         // Zoom in
         zoom *= 1.5;
         // Recalculate center to keep clicked point under cursor
-        double newScale = 4.0 / (WIDTH * zoom);
-        center_x = worldX - (event->x - WIDTH / 2.0) * newScale;
-        center_y = worldY - (event->y - HEIGHT / 2.0) * newScale;
+        double newScale = 4.0 / (renderWidth * zoom);
+        center_x = worldX - (event->x - renderWidth / 2.0) * newScale;
+        center_y = worldY - (event->y - renderHeight / 2.0) * newScale;
         needsRedraw = 1;
     }
     else if (event->button == SDL_BUTTON_RIGHT)
@@ -192,9 +196,9 @@ static void handleMouseButton(SDL_MouseButtonEvent *event)
         // Zoom out
         zoom /= 1.5;
         // Recalculate center to keep clicked point under cursor
-        double newScale = 4.0 / (WIDTH * zoom);
-        center_x = worldX - (event->x - WIDTH / 2.0) * newScale;
-        center_y = worldY - (event->y - HEIGHT / 2.0) * newScale;
+        double newScale = 4.0 / (renderWidth * zoom);
+        center_x = worldX - (event->x - renderWidth / 2.0) * newScale;
+        center_y = worldY - (event->y - renderHeight / 2.0) * newScale;
         needsRedraw = 1;
     }
 }
@@ -202,9 +206,9 @@ static void handleMouseButton(SDL_MouseButtonEvent *event)
 // Handle mouse wheel events for smooth zooming
 static void handleMouseWheel(SDL_MouseWheelEvent *event, int mouseX, int mouseY)
 {
-    double scale = 4.0 / (WIDTH * zoom);
-    double worldX = center_x + (mouseX - WIDTH / 2.0) * scale;
-    double worldY = center_y + (mouseY - HEIGHT / 2.0) * scale;
+    double scale = 4.0 / (renderWidth * zoom);
+    double worldX = center_x + (mouseX - renderWidth / 2.0) * scale;
+    double worldY = center_y + (mouseY - renderHeight / 2.0) * scale;
 
     if (event->y > 0)
     {
@@ -218,9 +222,9 @@ static void handleMouseWheel(SDL_MouseWheelEvent *event, int mouseX, int mouseY)
     }
 
     // Recalculate to keep point under cursor fixed
-    double newScale = 4.0 / (WIDTH * zoom);
-    center_x = worldX - (mouseX - WIDTH / 2.0) * newScale;
-    center_y = worldY - (mouseY - HEIGHT / 2.0) * newScale;
+    double newScale = 4.0 / (renderWidth * zoom);
+    center_x = worldX - (mouseX - renderWidth / 2.0) * newScale;
+    center_y = worldY - (mouseY - renderHeight / 2.0) * newScale;
 
     needsRedraw = 1;
 }
@@ -276,11 +280,11 @@ static void handleFingerDown(SDL_TouchFingerEvent *event)
         initialZoom = zoom;
 
         // Calculate pinch center in world coordinates (map to rendering space)
-        float centerPixelX = (finger1_x + finger2_x) / 2.0f * WIDTH;
-        float centerPixelY = (finger1_y + finger2_y) / 2.0f * HEIGHT;
-        double scale = 4.0 / (WIDTH * zoom);
-        pinchCenterX = center_x + (centerPixelX - WIDTH / 2.0) * scale;
-        pinchCenterY = center_y + (centerPixelY - HEIGHT / 2.0) * scale;
+        float centerPixelX = (finger1_x + finger2_x) / 2.0f * renderWidth;
+        float centerPixelY = (finger1_y + finger2_y) / 2.0f * renderHeight;
+        double scale = 4.0 / (renderWidth * zoom);
+        pinchCenterX = center_x + (centerPixelX - renderWidth / 2.0) * scale;
+        pinchCenterY = center_y + (centerPixelY - renderHeight / 2.0) * scale;
     }
 }
 
@@ -313,10 +317,9 @@ static void handleFingerUp(SDL_TouchFingerEvent *event)
         {
             Uint32 currentTime = SDL_GetTicks();
 
-            // SDL stretches texture to fill window, so simple linear mapping works
-            // Normalized touch coords [0,1] map directly to render coords [0,WIDTH/HEIGHT]
-            float tapX = ex * WIDTH;
-            float tapY = ey * HEIGHT;
+            // Normalized touch coords [0,1] map directly to render coords
+            float tapX = ex * renderWidth;
+            float tapY = ey * renderHeight;
 
             // Set debug marker to show where we think the tap is
             debugTapX = (int)tapX;
@@ -358,18 +361,18 @@ static void handleFingerUp(SDL_TouchFingerEvent *event)
             else
             {
                 // Single tap: zoom in keeping tap location fixed
-                double scale = 4.0 / (WIDTH * zoom);
-                double worldX = center_x + (tapX - WIDTH / 2.0) * scale;
-                double worldY = center_y + (tapY - HEIGHT / 2.0) * scale;
+                double scale = 4.0 / (renderWidth * zoom);
+                double worldX = center_x + (tapX - renderWidth / 2.0) * scale;
+                double worldY = center_y + (tapY - renderHeight / 2.0) * scale;
 
                 double newZoom = zoom * 1.5;
                 if (newZoom <= MAX_ZOOM)
                 {
                     zoom = newZoom;
                     // Recalculate center to keep tapped point under finger
-                    double newScale = 4.0 / (WIDTH * zoom);
-                    center_x = worldX - (tapX - WIDTH / 2.0) * newScale;
-                    center_y = worldY - (tapY - HEIGHT / 2.0) * newScale;
+                    double newScale = 4.0 / (renderWidth * zoom);
+                    center_x = worldX - (tapX - renderWidth / 2.0) * newScale;
+                    center_y = worldY - (tapY - renderHeight / 2.0) * newScale;
                     lastZoomTime = SDL_GetTicks();
                     needsRedraw = 1;
                 }
@@ -430,9 +433,9 @@ static void handleFingerMotion(SDL_TouchFingerEvent *event)
         float dx = x - lastPanX;
         float dy = y - lastPanY;
 
-        double scale = 4.0 / (WIDTH * zoom);
-        center_x -= dx * WIDTH * scale;
-        center_y -= dy * HEIGHT * scale;
+        double scale = 4.0 / (renderWidth * zoom);
+        center_x -= dx * renderWidth * scale;
+        center_y -= dy * renderHeight * scale;
 
         lastPanX = x;
         lastPanY = y;
@@ -469,11 +472,11 @@ static void handleFingerMotion(SDL_TouchFingerEvent *event)
             zoom = newZoom;
 
             // Keep pinch center fixed (map to rendering space)
-            float centerPixelX = (finger1_x + finger2_x) / 2.0f * WIDTH;
-            float centerPixelY = (finger1_y + finger2_y) / 2.0f * HEIGHT;
-            double newScale = 4.0 / (WIDTH * zoom);
-            center_x = pinchCenterX - (centerPixelX - WIDTH / 2.0) * newScale;
-            center_y = pinchCenterY - (centerPixelY - HEIGHT / 2.0) * newScale;
+            float centerPixelX = (finger1_x + finger2_x) / 2.0f * renderWidth;
+            float centerPixelY = (finger1_y + finger2_y) / 2.0f * renderHeight;
+            double newScale = 4.0 / (renderWidth * zoom);
+            center_x = pinchCenterX - (centerPixelX - renderWidth / 2.0) * newScale;
+            center_y = pinchCenterY - (centerPixelY - renderHeight / 2.0) * newScale;
 
             needsRedraw = 1;
         }
@@ -502,8 +505,8 @@ int main(int argc, char *argv[])
         "Mandelbrot Explorer (SDL2)",
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
-        WIDTH,
-        HEIGHT,
+        INITIAL_WIDTH,
+        INITIAL_HEIGHT,
         SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
     if (!window)
     {
@@ -525,13 +528,17 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    // Set initial render size to match window
+    renderWidth = windowWidth;
+    renderHeight = windowHeight;
+
     // Create texture for pixel buffer (ARGB8888 format)
     texture = SDL_CreateTexture(
         renderer,
         SDL_PIXELFORMAT_ARGB8888,
         SDL_TEXTUREACCESS_STREAMING,
-        WIDTH,
-        HEIGHT);
+        renderWidth,
+        renderHeight);
     if (!texture)
     {
         SDL_Log("SDL_CreateTexture failed: %s", SDL_GetError());
@@ -542,7 +549,7 @@ int main(int argc, char *argv[])
     }
 
     // Allocate pixel buffer
-    pixels = (uint32_t *)malloc(WIDTH * HEIGHT * sizeof(uint32_t));
+    pixels = (uint32_t *)malloc(renderWidth * renderHeight * sizeof(uint32_t));
     if (!pixels)
     {
         SDL_Log("Failed to allocate pixel buffer");
@@ -604,6 +611,28 @@ int main(int argc, char *argv[])
                     event.window.event == SDL_WINDOWEVENT_RESIZED)
                 {
                     SDL_GetWindowSize(window, &windowWidth, &windowHeight);
+
+                    // Resize texture and pixel buffer to match new window size
+                    if (windowWidth != renderWidth || windowHeight != renderHeight)
+                    {
+                        renderWidth = windowWidth;
+                        renderHeight = windowHeight;
+
+                        // Recreate texture at new size
+                        SDL_DestroyTexture(texture);
+                        texture = SDL_CreateTexture(
+                            renderer,
+                            SDL_PIXELFORMAT_ARGB8888,
+                            SDL_TEXTUREACCESS_STREAMING,
+                            renderWidth,
+                            renderHeight);
+
+                        // Reallocate pixel buffer
+                        free(pixels);
+                        pixels = (uint32_t *)malloc(renderWidth * renderHeight * sizeof(uint32_t));
+
+                        SDL_Log("RESIZE: %dx%d", renderWidth, renderHeight);
+                    }
                     needsRedraw = 1;
                 }
                 break;
