@@ -357,7 +357,7 @@ static void handleFingerUp(SDL_TouchFingerEvent *event)
             }
             else
             {
-                // Single tap: zoom in centered on tap location
+                // Single tap: zoom in keeping tap location fixed
                 double scale = 4.0 / (WIDTH * zoom);
                 double worldX = center_x + (tapX - WIDTH / 2.0) * scale;
                 double worldY = center_y + (tapY - HEIGHT / 2.0) * scale;
@@ -366,8 +366,10 @@ static void handleFingerUp(SDL_TouchFingerEvent *event)
                 if (newZoom <= MAX_ZOOM)
                 {
                     zoom = newZoom;
-                    center_x = worldX;
-                    center_y = worldY;
+                    // Recalculate center to keep tapped point under finger
+                    double newScale = 4.0 / (WIDTH * zoom);
+                    center_x = worldX - (tapX - WIDTH / 2.0) * newScale;
+                    center_y = worldY - (tapY - HEIGHT / 2.0) * newScale;
                     lastZoomTime = SDL_GetTicks();
                     needsRedraw = 1;
                 }
