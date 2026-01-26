@@ -174,23 +174,27 @@ static void renderMandelbrot(void)
 static void handleMouseButton(SDL_MouseButtonEvent *event)
 {
     double scale = 4.0 / (WIDTH * zoom);
-    double mouseX = center_x + (event->x - WIDTH / 2.0) * scale;
-    double mouseY = center_y + (event->y - HEIGHT / 2.0) * scale;
+    double worldX = center_x + (event->x - WIDTH / 2.0) * scale;
+    double worldY = center_y + (event->y - HEIGHT / 2.0) * scale;
 
     if (event->button == SDL_BUTTON_LEFT)
     {
         // Zoom in
         zoom *= 1.5;
-        center_x = mouseX;
-        center_y = mouseY;
+        // Recalculate center to keep clicked point under cursor
+        double newScale = 4.0 / (WIDTH * zoom);
+        center_x = worldX - (event->x - WIDTH / 2.0) * newScale;
+        center_y = worldY - (event->y - HEIGHT / 2.0) * newScale;
         needsRedraw = 1;
     }
     else if (event->button == SDL_BUTTON_RIGHT)
     {
         // Zoom out
         zoom /= 1.5;
-        center_x = mouseX;
-        center_y = mouseY;
+        // Recalculate center to keep clicked point under cursor
+        double newScale = 4.0 / (WIDTH * zoom);
+        center_x = worldX - (event->x - WIDTH / 2.0) * newScale;
+        center_y = worldY - (event->y - HEIGHT / 2.0) * newScale;
         needsRedraw = 1;
     }
 }
