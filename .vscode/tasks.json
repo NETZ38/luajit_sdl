@@ -1,0 +1,21 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build sdl_draw",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "produce_executable"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "Compile sdl_draw.c via Makefile"
+        }
+    ]
+}

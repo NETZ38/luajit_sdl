@@ -1,5 +1,27 @@
 {
+    "version": "0.2.0",
     "configurations": [
+        {
+            "name": "Debug sdl_draw",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/sdl_draw",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "Build sdl_draw",
+            "miDebuggerPath": "/usr/bin/gdb"
+        },
         {
             "type": "lua-local",
             // https://marketplace.visualstudio.com/items?itemName=tomblind.local-lua-debugger-vscode
