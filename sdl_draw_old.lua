@@ -12,6 +12,8 @@
 local ffi = require("ffi")
 local bit = require("bit")
 
+---@diagnostic disable: undefined-field
+
 -- SDL2 FFI definitions
 ffi.cdef [[
     typedef struct SDL_Window SDL_Window;
